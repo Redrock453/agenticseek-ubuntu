@@ -1,0 +1,122 @@
+version: '3.8'
+
+services:
+  redis:
+    container_name: agenticseek-redis
+    image: docker.io/valkey/valkey:8-alpine
+    command: valkey-server --save 30 1 --loglevel warning
+    restart: unless-stopped
+    volumes:
+      - agenticseek_redis_data:/data
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - agenticseek-net
+    ports:
+      - "6379:6379"
+
+  searxng:
+    container_name: agenticseek-searxng
+    image: docker.io/searxng/searxng:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8080/
+      - SEARXNG_SECRET_KEY=agenticseek_secret_key_change_me_in_production
+      - UWSGI_WORKERS=4
+      - UWSGI_THREADS=4
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      - redis
+    networks:
+      - agenticseek-net
+
+  ollama:
+    container_name: agenticseek-ollama
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - agenticseek_ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    networks:
+      - agenticseek-net
+    pull_policy: always
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - ollama
+
+  frontend:
+    container_name: agenticseek-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./screenshots:/app/screenshots
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+      - REACT_APP_BACKEND_URL=http://localhost:8000
+    networks:
+      - agenticseek-net
+    profiles:
+      - frontend
+
+  # Monitoring service
+  monitoring:
+    container_name: agenticseek-monitoring
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "9090:80"
+    volumes:
+      - ./monitoring:/usr/share/nginx/html:ro
+    networks:
+      - agenticseek-net
+    profiles:
+      - monitoring
+
+volumes:
+  agenticseek_redis_data:
+  agenticseek_ollama_data:
+
+networks:
+  agenticseek-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+          gateway: 172.21.0.1
+    labels:
+      - "agenticseek.network=main"

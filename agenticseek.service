@@ -1,0 +1,17 @@
+[Unit]
+Description=AgenticSeek Service
+After=network.target docker.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/agenticseek-ubuntu
+Environment=PATH=/home/ubuntu/agenticseek-ubuntu/agentic_seek_env/bin
+ExecStart=/home/ubuntu/agenticseek-ubuntu/agentic_seek_env/bin/python /home/ubuntu/agenticseek-ubuntu/cli.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
